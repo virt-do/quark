@@ -1,29 +1,40 @@
+use crate::quardle::Quardle;
+use crate::{Handler, Result};
 use clap::Args;
 
-use super::{Handler, Result};
-
-/// Arguments for `BuildCommand`
-///
-/// Usage :
-/// `quark build --image <IMAGE>`
-#[derive(Debug, Args)]
-pub struct BuildCommand {
-    /// The name of the generated quardle, with the suffix `.qrk`
-    #[clap(short, long)]
-    quardle: String,
-
-    /// Indicates wether or not the container image is bundled into the initramfs image
-    #[clap(short, long)]
-    offline: bool,
-
-    /// Overrides the default kernel command line
-    #[clap(short, long)]
-    kernel_cmd: Option<String>,
+/// CLI related errors
+#[derive(Debug)]
+pub enum Error {
 }
 
-/// Method that will be called when the command is executed.
+/// Arguments for our `BuildCommand`.
+///
+/// These arguments are parsed by `clap` and an instance of `BuildCommand` containing
+/// arguments is provided.
+///
+/// Example :
+///
+/// `quark build --image <container_image_url> --quardle <quardle_name>`
+///
+/// The `handler` method provided below will be executed.
+#[derive(Debug, Args)]
+pub struct BuildCommand {
+  /// The url of the container image
+  #[clap(short, long)]
+  image: String,
+  /// The name of the quardle to create
+  #[clap(short, long)]
+  quardle: String,
+
+  /// The name of the quardle to create
+  #[clap(short, long)]
+  offline: bool
+}
+
 impl Handler for BuildCommand {
-    fn handler(&self) -> Result<()> {
-        Ok(())
-    }
+  fn handler(&self) -> Result<()> {
+    Quardle::new().unwrap();
+
+    Ok(())
+  }
 }
