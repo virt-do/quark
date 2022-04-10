@@ -19,13 +19,18 @@ impl From<std::io::Error> for Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub trait Handler {
-    fn handler(&self) -> Result<()>;
+    fn handler(&self, logger: &mut env_logger::Builder) -> Result<()>;
 }
 
 /// Create a cli for quark
 #[derive(Parser, Debug)]
 #[clap(version, author)]
 pub struct Cli {
+    /// The level of verbosity.
+    #[clap(short, long, parse(from_occurrences))]
+    pub(crate) verbose: usize,
+
+    /// The subcommand to apply
     #[clap(subcommand)]
     pub(crate) command: Command,
 }
