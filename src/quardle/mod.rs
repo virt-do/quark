@@ -48,6 +48,7 @@ impl Quardle {
         self
             .setup()
             .add_kernel()
+            .add_initramfs()
             .add_config_file()
             .make_archive()?;
         
@@ -129,6 +130,51 @@ impl Quardle {
                 .expect("failed to build kernel");
         }
 
+        // Install a script to build initramfs
+        if !std::path::Path::new(&format!("{}alpine-minirootfs", QUARK_CONFIG_DIR)).exists() {
+            warn!("Rootfs not builded, building it !");
+            Command::new("curl")
+                .arg("https://dl-cdn.alpinelinux.org/alpine/v3.14/releases/x86_64/alpine-minirootfs-3.14.2-x86_64.tar.gz")
+                .arg("-O") 
+                .current_dir(format!("{}", QUARK_CONFIG_DIR))
+                .output()
+                .expect("failed to download rootfs archive");
+            Command::new("mkdir")
+                .arg("alpine-minirootfs")
+                .current_dir(format!("{}", QUARK_CONFIG_DIR))
+                .output()
+                .expect("failed to download initramfs build script");
+            Command::new("tar")
+                .arg("-xzf")
+                .arg("alpine-minirootfs-3.14.2-x86_64.tar.gz")
+                .arg("-C")
+                .arg("alpine-minirootfs")
+                .current_dir(format!("{}", QUARK_CONFIG_DIR))
+                .output()
+                .expect("failed to extract rootfs archive");
+
+            if !std::path::Path::new(&format!("{}mkinitramfs.sh", QUARK_CONFIG_DIR)).exists() {
+                warn!("InitramFS build script not found, installing it !");
+                Command::new("curl")
+                    .arg("https://raw.githubusercontent.com/virt-do/quark/main/tools/mkinitramfs.sh")
+                    .arg("-O") 
+                    .current_dir(format!("{}", QUARK_CONFIG_DIR))
+                    .output()
+                    .expect("failed to download initramfs build script");
+                Command::new("chmod")
+                    .arg("+x")
+                    .arg(format!("{}mkinitramfs.sh", QUARK_CONFIG_DIR))
+                    .current_dir(format!("{}", QUARK_CONFIG_DIR))
+                    .output()
+                    .expect("failed to make initramfs build script executable");
+            }
+
+            warn!("InitramFS not builded, building it !");
+            Command::new(format!("{}mkinitramfs.sh", QUARK_CONFIG_DIR))
+                .current_dir(format!("{}", QUARK_CONFIG_DIR))
+                .output()   
+                .expect("failed to build initramfs");
+        }
         self
     }
 
@@ -141,6 +187,19 @@ impl Quardle {
             .arg(format!("{}", self.clone().get_work_dir()))
             .spawn()
             .expect("failed to copy kernel");
+        self
+    }
+
+    /// Append basic rootfs
+    /// Fetch automated script if isn't already installed, and use some bash script to build it
+    fn add_initramfs(&self) -> &Quardle {
+        info!("Installing initRamFS image to quardle");
+        Command::new("cp")
+            .arg(format!("{}initramfs.img", QUARK_CONFIG_DIR))
+            .arg(format!("{}", self.clone().get_work_dir()))
+            .output()
+            .expect("failed to write initramfs");
+     
         self
     }
 
@@ -209,5 +268,13 @@ mod tests {
         quardle.as_ref().unwrap().add_kernel();
         assert_eq!(quardle.as_ref().unwrap().name, "test3");
         assert_eq!(quardle.as_ref().unwrap().container_image_url, "container3");
+    }
+
+    #[test]
+    fn quardle_add_initramfs() {
+        let quardle = Quardle::new("test4".to_string(), "container4".to_string(), false);
+        quardle.as_ref().unwrap().add_initramfs();
+        assert_eq!(quardle.as_ref().unwrap().name, "test4");
+        assert_eq!(quardle.as_ref().unwrap().container_image_url, "container4");
     }
 }
