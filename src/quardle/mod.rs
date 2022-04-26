@@ -50,6 +50,7 @@ impl Quardle {
             .add_kernel()
             .add_initramfs()
             .add_config_file()
+            .clean_quardle_build_dir()
             .make_archive()?;
         
         // Deleting temporary files used to build the quardle
@@ -90,6 +91,16 @@ impl Quardle {
                 .arg("/opt/quark")
                 .output()
                 .expect("failed to setup quark");
+        }
+
+        // Install kaps sources
+        if !std::path::Path::new(&format!("{}kaps", QUARK_CONFIG_DIR)).exists() {
+            info!("Kaps not found, installing it !");
+            Command::new("git")
+                .args(["clone", "https://github.com/virt-do/kaps.git"]) // Using https protocol because it seems not supporting ssh
+                .current_dir(format!("{}", QUARK_CONFIG_DIR))
+                .output()
+                .expect("failed to fetch kaps");
         }
 
         // Install a default kernel configuration file
@@ -152,28 +163,42 @@ impl Quardle {
                 .current_dir(format!("{}", QUARK_CONFIG_DIR))
                 .output()
                 .expect("failed to extract rootfs archive");
-
-            if !std::path::Path::new(&format!("{}mkinitramfs.sh", QUARK_CONFIG_DIR)).exists() {
-                warn!("InitramFS build script not found, installing it !");
-                Command::new("curl")
-                    .arg("https://raw.githubusercontent.com/virt-do/quark/main/tools/mkinitramfs.sh")
-                    .arg("-O") 
-                    .current_dir(format!("{}", QUARK_CONFIG_DIR))
-                    .output()
-                    .expect("failed to download initramfs build script");
-                Command::new("chmod")
-                    .arg("+x")
-                    .arg(format!("{}mkinitramfs.sh", QUARK_CONFIG_DIR))
-                    .current_dir(format!("{}", QUARK_CONFIG_DIR))
-                    .output()
-                    .expect("failed to make initramfs build script executable");
-            }
-
-            warn!("InitramFS not builded, building it !");
-            Command::new(format!("{}mkinitramfs.sh", QUARK_CONFIG_DIR))
+            
+            // Adding kaps binary to the rootfs
+            self.add_kaps_to_rootfs();
+        }
+        
+        if !std::path::Path::new(&format!("{}mkinitramfs.sh", QUARK_CONFIG_DIR)).exists() {
+            warn!("InitramFS build script not found, installing it !");
+            Command::new("curl")
+                .arg("https://raw.githubusercontent.com/virt-do/quark/main/tools/mkinitramfs.sh")
+                .arg("-O") 
                 .current_dir(format!("{}", QUARK_CONFIG_DIR))
-                .output()   
-                .expect("failed to build initramfs");
+                .output()
+                .expect("failed to download initramfs build script");
+            Command::new("chmod")
+                .arg("+x")
+                .arg(format!("{}mkinitramfs.sh", QUARK_CONFIG_DIR))
+                .current_dir(format!("{}", QUARK_CONFIG_DIR))
+                .output()
+                .expect("failed to make initramfs build script executable");
+        }
+
+        // Install a script to build kaps bundle
+        if !std::path::Path::new(&format!("{}mkbundle.sh", QUARK_CONFIG_DIR)).exists() {
+            warn!("Kaps bundle build script not found, installing it !");
+            Command::new("curl")
+                .arg("https://raw.githubusercontent.com/virt-do/lab/main/do-vmm/rootfs/mkbundle.sh")
+                .arg("-O") 
+                .current_dir(format!("{}", QUARK_CONFIG_DIR))
+                .output()
+                .expect("failed to fetch kaps bundle build script");
+            Command::new("chmod")
+                .arg("+x")
+                .arg(format!("{}mkbundle.sh", QUARK_CONFIG_DIR))
+                .current_dir(format!("{}", QUARK_CONFIG_DIR))
+                .output()
+                .expect("failed to make kernel build script executable");
         }
         self
     }
@@ -195,11 +220,65 @@ impl Quardle {
     fn add_initramfs(&self) -> &Quardle {
         info!("Installing initRamFS image to quardle");
         Command::new("cp")
-            .arg(format!("{}initramfs.img", QUARK_CONFIG_DIR))
+            .arg("-r")
+            .arg(format!("{}alpine-minirootfs", QUARK_CONFIG_DIR))
             .arg(format!("{}", self.clone().get_work_dir()))
-            .output()
-            .expect("failed to write initramfs");
+            .spawn()
+            .expect("failed to copy rootfs");
+
+        // If offline mode is active, we need to build kaps bundle image directly in the quardle.
+        if self.offline {
+            info!("Offline mode, adding kaps bundle to the quardle.");
+            Command::new(format!("{}mkbundle.sh", QUARK_CONFIG_DIR))
+            .arg(format!("{}/alpine-minirootfs/ctr-bundle", self.clone().get_work_dir()))
+            .current_dir(format!("{}", QUARK_CONFIG_DIR))
+            .output()   
+            .expect("failed to build initramfs");
+        }
+            
+        // add init file to it
+        info!("InitramFS not builded, building it !");
+        Command::new(format!("{}mkinitramfs.sh", QUARK_CONFIG_DIR))
+            .arg(format!("{}/alpine-minirootfs", self.clone().get_work_dir()))
+            .current_dir(format!("{}", QUARK_CONFIG_DIR))
+            .output()   
+            .expect("failed to build initramfs");
      
+        self
+    }
+
+    fn clean_quardle_build_dir(&self) -> &Quardle {
+        info!("Cleaning quardle build directory !");
+        Command::new("rm")
+            .arg("-rdf")
+            .arg("alpine-minirootfs")
+            .arg("mkbundle.sh")
+            .arg("mkinitramfs.sh")
+            .current_dir(format!("{}", self.clone().get_work_dir()))
+            .output()
+            .expect("failed to clean quardle build directory");
+        self
+    }
+
+    /// Append kaps binary to rootfs image
+    /// Fetch kaps source code if isn't already installed, build it from source and copy it to the working directory
+    fn add_kaps_to_rootfs(&self) -> &Quardle {
+        info!("Installing kaps to quardle");
+        Command::new("cargo")
+            .current_dir(format!("{}kaps", QUARK_CONFIG_DIR))
+            .arg("build")
+            .arg("--release")
+            // .arg("--out-dir") //TODO: outdir is only available on nightly for now, should be used later
+            // .arg(format!("{}/rootfs/usr/bin/kaps",self.clone().get_work_dir()))
+                .output()
+                .expect("failed to build kaps");
+
+        Command::new("cp")
+            .arg(format!("{}kaps/target/release/kaps", QUARK_CONFIG_DIR))
+            .arg(format!("{}/alpine-minirootfs/usr/bin/kaps",self.clone().get_work_dir()))
+            .output()
+            .expect("failed to copy kaps");
+
         self
     }
 
@@ -276,5 +355,22 @@ mod tests {
         quardle.as_ref().unwrap().add_initramfs();
         assert_eq!(quardle.as_ref().unwrap().name, "test4");
         assert_eq!(quardle.as_ref().unwrap().container_image_url, "container4");
+    }
+
+    #[test]
+    fn quardle_add_kaps_to_rootfs() {
+        let quardle = Quardle::new("test6".to_string(), "container6".to_string(), false);
+        quardle.as_ref().unwrap().add_initramfs().add_kaps_to_rootfs();
+        assert_eq!(quardle.as_ref().unwrap().name, "test6");
+        assert_eq!(quardle.as_ref().unwrap().container_image_url, "container6");
+    }
+
+    #[test]
+    #[should_panic]
+    fn quardle_clean_quardle_build_dir() {
+        let quardle = Quardle::new("test5".to_string(), "container5".to_string(), false);
+        quardle.as_ref().unwrap().clean_quardle_build_dir();
+        assert_eq!(quardle.as_ref().unwrap().name, "test5");
+        assert_eq!(quardle.as_ref().unwrap().container_image_url, "container5");
     }
 }
