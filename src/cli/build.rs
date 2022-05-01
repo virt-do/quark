@@ -23,7 +23,7 @@ pub struct BuildCommand {
 
 /// Method that will be called when the command is executed.
 impl Handler for BuildCommand {
-    fn handler(&self) -> Result<()> {
+    fn handler(&self, _logger: &mut env_logger::Builder) -> Result<()> {
         Ok(())
     }
 }

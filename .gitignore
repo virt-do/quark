@@ -13,3 +13,5 @@ Cargo.lock
 *.tar.gz
 .vscode
 ctr-bundle
+quardle*
+lumper*
