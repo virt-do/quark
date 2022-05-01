@@ -12,4 +12,12 @@ Cargo.lock
 .idea
 *.tar.gz
 .vscode
+
+# Generated on quark build
 ctr-bundle
+kaps
+linux-cloud-hypervisor
+alpine-minirootfs
+initramfs.img
+quark.json
+*.qrk
