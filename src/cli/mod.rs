@@ -6,7 +6,6 @@ use clap::{Parser, Subcommand};
 /// CLI related errors
 #[derive(Debug)]
 pub enum Error {
-    Build(build::Error),
 }
 
 /// A common result type for our CLI.
