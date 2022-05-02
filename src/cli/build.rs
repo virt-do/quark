@@ -11,6 +11,11 @@ pub struct JsonConfig {
     container_url: String,
 }
 
+// pub enum Result <Success, Error> {
+//     Ok(Success),
+//     Err(Error),
+// }
+
 /// Arguments for `BuildCommand`
 ///
 /// Usage :
@@ -37,7 +42,7 @@ pub struct BuildCommand {
     #[clap(short, long, default_value = "./build/lumper/rootfs/alpine-minirootfs")]
     rootfs: String,
 
-    /// Overrides the default rootfs
+    /// Path for kaps
     #[clap(
         short = 'K',
         long,
@@ -46,7 +51,7 @@ pub struct BuildCommand {
     kaps: String,
 
     /// Overrides the default bundle
-    #[clap(short, long, default_value = "./build/kaps/hack/ctr-bundle")]
+    #[clap(short, long)]
     bundle: String,
 }
 
@@ -79,7 +84,7 @@ impl Handler for BuildCommand {
             std::fs::remove_dir_all(workdir).unwrap();
         }
 
-        // Create the workdir ------------------------------------------------------------
+        // Create the workdir
         println!("Creating workdir {}", workdir);
         std::fs::create_dir_all(&workdir)?;
 
@@ -134,7 +139,7 @@ impl Handler for BuildCommand {
             return Ok(());
         }
 
-        // Configure rootfs ------------------------------------------------------------
+        // Configure rootfs
         println!("Configuring rootfs");
 
         // Change the init script to use the kaps bundle
@@ -162,7 +167,7 @@ impl Handler for BuildCommand {
             .status()
             .unwrap();
 
-        // Create initramfs ------------------------------------------------------------
+        // Create initramfs
         println!("Creating initramfs");
         let rootfs_workdir = format!("{}/{}", workdir, rootfs_filename);
         (subprocess::Exec::shell(format!("find {} -print0", rootfs_workdir))
@@ -172,7 +177,7 @@ impl Handler for BuildCommand {
         .unwrap();
         println!("Initramfs created");
 
-        // Generate the quark.json file --------------------------------------------------
+        // Generate the quark.json file
         println!("Generating quark.json");
         let json_data = JsonConfig {
             kernel: self.kernel.clone().split('/').last().unwrap().to_string(),
@@ -186,7 +191,7 @@ impl Handler for BuildCommand {
         write!(&mut quark_json_file, "{}", serialized)?;
         println!("Quark.json generated");
 
-        // Create the quardle file ----------------------------------------------------
+        // Create the quardle file
         let quark_name = if self.quardle.ends_with(".qrk") {
             self.quardle.clone()
         } else {
@@ -207,7 +212,7 @@ impl Handler for BuildCommand {
         println!("Copying quark.json to tar directory");
         std::fs::copy(&quark_json, &format!("{}tar/quark.json", workdir))?;
 
-        // Create the quardle file ----------------------------------------------------
+        // Create the quardle file
         println!("Creating {} file", quark_name);
 
         // Create the tar file
