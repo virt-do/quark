@@ -13,4 +13,8 @@ Cargo.lock
 .idea
 *.tar.gz
 .vscode
+<<<<<<< HEAD
 ctr-bundle
+=======
+ctr-bundle
+>>>>>>> 7fa3aa5 (implemented primary quardle functionnalities)

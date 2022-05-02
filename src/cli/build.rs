@@ -33,8 +33,9 @@ pub struct BuildCommand {
 
 impl Handler for BuildCommand {
   fn handler(&self) -> Result<()> {
-    Quardle::new().unwrap();
-
+    Quardle::new(self.quardle.clone(), self.image.clone(), self.offline)
+      .unwrap()
+      .build(Some(false)).unwrap();
     Ok(())
   }
 }
