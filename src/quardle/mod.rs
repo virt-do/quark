@@ -47,6 +47,7 @@ impl Quardle {
 
         self
             .setup()
+            .add_kernel()
             .add_config_file()
             .make_archive()?;
         
@@ -90,6 +91,56 @@ impl Quardle {
                 .expect("failed to setup quark");
         }
 
+        // Install a default kernel configuration file
+        if !std::path::Path::new(&format!("{}linux-config-x86_64", QUARK_CONFIG_DIR)).exists() {
+            warn!("Kernel config file not found, installing it !");
+            Command::new("curl")
+                .arg("https://raw.githubusercontent.com/virt-do/lab/main/do-vmm/kernel/linux-config-x86_64")
+                .arg("-O") 
+                .current_dir(format!("{}", QUARK_CONFIG_DIR))
+                .output()
+                .expect("failed to fetch kernel config file");
+        }
+
+        // Install a script to build kernel
+        if !std::path::Path::new(&format!("{}mkkernel.sh", QUARK_CONFIG_DIR)).exists() {
+            warn!("Kernel build script not found, installing it !");
+            Command::new("curl")
+                .arg("https://raw.githubusercontent.com/virt-do/lab/main/do-vmm/kernel/mkkernel.sh")
+                .arg("-O") 
+                .current_dir(format!("{}", QUARK_CONFIG_DIR))
+                .output()
+                .expect("failed to fetch kernel build script");
+
+            Command::new("chmod")
+                .arg("+x")
+                .arg(format!("{}mkkernel.sh", QUARK_CONFIG_DIR))
+                .current_dir(format!("{}", QUARK_CONFIG_DIR))
+                .output()
+                .expect("failed to make kernel build script executable");
+        }
+
+        // Building kernel binary
+        if !std::path::Path::new(&format!("{}linux-cloud-hypervisor", QUARK_CONFIG_DIR)).exists() {
+            warn!("Kernel not builded, building it !");
+            Command::new(format!("{}mkkernel.sh", QUARK_CONFIG_DIR))
+                .current_dir(format!("{}", QUARK_CONFIG_DIR))
+                .output()   
+                .expect("failed to build kernel");
+        }
+
+        self
+    }
+
+    /// Append kernel configuration
+    /// Fetch automated script if isn't already installed, and use some bash script to build it
+    fn add_kernel(&self) -> &Quardle {
+        info!("Installing kernel binary !");
+        Command::new("cp")
+            .arg(format!("{}linux-cloud-hypervisor/arch/x86/boot/compressed/vmlinux.bin", QUARK_CONFIG_DIR))
+            .arg(format!("{}", self.clone().get_work_dir()))
+            .spawn()
+            .expect("failed to copy kernel");
         self
     }
 
@@ -142,5 +193,21 @@ mod tests {
     fn quardle_get_work_dir() {
         let quardle = Quardle::new("this-should-be-a-directory".to_string(), "my-container".to_string(), false);
         assert_eq!(quardle.unwrap().get_work_dir(), "/tmp/quark/builds/this-should-be-a-directory/");
+    }
+
+    #[test]
+    fn quardle_setup() {
+        let quardle = Quardle::new("test2".to_string(), "container2".to_string(), false);
+        quardle.as_ref().unwrap().setup();
+        assert_eq!(quardle.as_ref().unwrap().name, "test2");
+        assert_eq!(quardle.as_ref().unwrap().container_image_url, "container2");
+    }
+
+    #[test]
+    fn quardle_add_kernel() {
+        let quardle = Quardle::new("test3".to_string(), "container3".to_string(), false);
+        quardle.as_ref().unwrap().add_kernel();
+        assert_eq!(quardle.as_ref().unwrap().name, "test3");
+        assert_eq!(quardle.as_ref().unwrap().container_image_url, "container3");
     }
 }
