@@ -1,7 +1,9 @@
-use clap::StructOpt;
-use cli::{Cli, Result};
+use clap::Parser;
+
+use crate::cli::{Cli, Handler, Result};
 
 mod cli;
+mod quardle;
 
 fn main() -> Result<()> {
     let cli: Cli = Cli::parse();
